@@ -17,6 +17,8 @@ from .proto.tensor_pb2 import TensorProto
 from .proto.tensor_shape_pb2 import TensorShapeProto
 from .proto.plugin_pr_curve_pb2 import PrCurvePluginData
 from .proto.plugin_text_pb2 import TextPluginData
+from .proto import plugin_hparams_pb2
+from .proto import plugin_hparams_api_pb2
 from .proto import layout_pb2
 from .x2num import make_np
 from .utils import _prepare_video, convert_to_HWC
@@ -381,6 +383,73 @@ def custom_scalars(layout):
                          string_val=[layout.SerializeToString()],
                          tensor_shape=TensorShapeProto())
     return Summary(value=[Summary.Value(tag='custom_scalars__config__', tensor=tensor, metadata=smd)])
+
+
+def hparams_experiment(hparam_infos, metric_infos):
+    experimemnt = plugin_hparams_api_pb2.Experiment(
+        # The hyperparwameters being changed
+        hparam_infos=hparam_infos,
+        # The metrics being tracked
+        metric_infos=metric_infos
+    )
+
+    hparam_data = plugin_hparams_pb2.HParamsPluginData(version=0, experiment=experimemnt)
+
+    PluginData = [SummaryMetadata.PluginData(
+        plugin_name='hparams',
+        content=hparam_data.SerializeToString())]
+    smd = SummaryMetadata(plugin_data=PluginData)
+    return Summary(value=[Summary.Value(metadata=smd)])
+
+
+def hparams_session_start(hparams,
+                          model_uri='',
+                          monitor_url='',
+                          group_name='',
+                          start_time_secs=None):
+    import time
+    import six
+    if start_time_secs is None:
+        start_time_secs = time.time()
+    session_start_info = plugin_hparams_pb2.SessionStartInfo(
+        model_uri=model_uri,
+        monitor_url=monitor_url,
+        group_name=group_name,
+        start_time_secs=start_time_secs)
+    for (hp_name, hp_val) in six.iteritems(hparams):
+        if isinstance(hp_val, (float, int)):
+            session_start_info.hparams[hp_name].number_value = hp_val
+        elif isinstance(hp_val, six.string_types):
+            session_start_info.hparams[hp_name].string_value = hp_val
+        elif isinstance(hp_val, bool):
+            session_start_info.hparams[hp_name].bool_value = hp_val
+        elif isinstance(hp_val, (list, tuple)):
+            session_start_info.hparams[hp_name].string_value = str(hp_val)
+        else:
+            raise TypeError('hparams[%s]=%s has type: %s which is not supported' %
+                            (hp_name, hp_val, type(hp_val)))
+
+    hparam_data = plugin_hparams_pb2.HParamsPluginData(version=0, session_start_info=session_start_info)
+    PluginData = [SummaryMetadata.PluginData(
+        plugin_name='hparams',
+        content=hparam_data.SerializeToString())]
+    smd = SummaryMetadata(plugin_data=PluginData)
+    return Summary(value=[Summary.Value(tag='_hparams_/session_start_info', metadata=smd)])
+
+def hparams_session_end(status, end_time_secs=None):
+    import time
+    if end_time_secs is None:
+        end_time_secs = time.time()
+
+    session_end_info = plugin_hparams_pb2.SessionEndInfo(status=status,
+                                                         end_time_secs=end_time_secs)
+    hparam_data = plugin_hparams_pb2.HParamsPluginData(version=0, session_end_info=session_end_info)
+
+    PluginData = [SummaryMetadata.PluginData(
+        plugin_name='hparams',
+        content=hparam_data.SerializeToString())]
+    smd = SummaryMetadata(plugin_data=PluginData)
+    return Summary(value=[Summary.Value(tag='_hparams_/session_end_info', metadata=smd)])
 
 
 def text(tag, text):

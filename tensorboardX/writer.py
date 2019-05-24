@@ -15,12 +15,13 @@ from .event_file_writer import EventFileWriter
 from .onnx_graph import load_onnx_graph
 from .pytorch_graph import graph
 from .proto import event_pb2
-from .proto import summary_pb2
+from .proto import plugin_hparams_api_pb2
 from .proto.event_pb2 import SessionLog, Event
 from .utils import figure_to_image
 from .summary import (
     scalar, histogram, histogram_raw, image, audio, text,
-    pr_curve, pr_curve_raw, video, custom_scalars, image_boxes
+    pr_curve, pr_curve_raw, video, custom_scalars, image_boxes,
+    hparams_session_start, hparams_session_end, hparams_experiment
 )
 
 
@@ -786,6 +787,76 @@ class SummaryWriter(object):
         # new funcion to append to the config file a new embedding
         append_pbtxt(metadata, label_img,
                      self._get_file_writer().get_logdir(), subdir, global_step, tag)
+
+
+    def add_hparam_expertiment(self, hparam_infos, metric_infos, global_step=0, walltime=None):
+        """Add HParams Experiment Definition to summary. Do this in the top level dir of all the runs
+
+        Args:
+            hparam_infos (list): List of plugin_hparams_api_pb2.HParamInfo
+            metric_infos (list): List of plugin_hparams_api_pb2.MetricInfo
+            global_step (int): Global step value to record
+            walltime (float): Optional override default walltime (time.time()) of event
+        Examples::
+            from google.protobuf import struct_pb2
+
+            num_units_list_val = struct_pb2.ListValue()
+            num_units_list_val.extend([128, 256])
+            dropout_rate_list_val = struct_pb2.ListValue()
+            dropout_rate_list_val.extend([0.1, 0.2, 0.3])
+            writer.add_hparam_expertiment(
+                hparam_infos=[
+                      plugin_hparams_api_pb2.HParamInfo(name='num_units',
+                                                        display_name='Number of units',
+                                                        type=plugin_hparams_api_pb2.DATA_TYPE_FLOAT64,
+                                                        domain_discrete=num_units_list_val),
+                      plugin_hparams_api_pb2.HParamInfo(name='dropout_rate',
+                                                        display_name='Dropout rate',
+                                                        type=plugin_hparams_api_pb2.DATA_TYPE_FLOAT64,
+                                                        domain_discrete=dropout_rate_list_val),
+                ],
+                metric_infos=[
+                    plugin_hparams_api_pb2.MetricInfo(
+                        name=api_pb2.MetricName(tag='accuracy'),
+                        display_name='Accuracy'),
+                ])
+        """
+        self.get_file_writer().add_summary(
+            hparams_experiment(hparam_infos=hparam_infos, metric_infos=metric_infos),
+            global_step=global_step,
+            walltime=walltime)
+
+    def add_hparams_start(self, hparams, global_step=0, walltime=None):
+        """Add HParams data to summary.
+
+        Args:
+            hparams (dict): Dictionary of hyper-parameter values in the experiment
+            global_step (int): Global step value to record
+            walltime (float): Optional override default walltime (time.time()) of event
+        Examples::
+
+            writer.add_hparams_start(dict(num_layers=10, hidden_units=256))
+        """
+        self.get_file_writer().add_summary(
+            hparams_session_start(hparams, start_time_secs=walltime),
+            global_step=global_step,
+            walltime=walltime)
+
+    def add_hparams_end(self, status=plugin_hparams_api_pb2.STATUS_SUCCESS, global_step=0, walltime=None):
+        """Add HParams data to summary.
+
+        Args:
+            status (int): Run status. One of plugin_hparams_api_pb2.[STATUS_UNKNOWN|STATUS_SUCCESS|STATUS_FAILURE)
+            global_step (int): Global step value to record
+            walltime (float): Optional override default walltime (time.time()) of event
+        Examples::
+
+            writer.add_hparams_end()
+        """
+        self.get_file_writer().add_summary(
+            hparams_session_end(status),
+            global_step=global_step,
+            walltime=walltime)
 
     def add_pr_curve(self, tag, labels, predictions, global_step=None,
                      num_thresholds=127, weights=None, walltime=None):

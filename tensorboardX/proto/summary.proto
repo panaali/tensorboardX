@@ -45,7 +45,7 @@ message SummaryMetadata {
     // defined by the plugin. Converting that protobuf to and from JSON is the
     // responsibility of the plugin code, and is not enforced by
     // TensorFlow/TensorBoard.
-    string content = 2;
+    bytes content = 2;
   }
 
   // A list of plugin data. A single summary value instance may be used by more
